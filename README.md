@@ -99,7 +99,7 @@ You only need to do below steps one time.
 - In the first step, data artifacts were deployed, but the semantic model needs to be redeloyed by provding the correct database endpoint parameters which you would need to obtain and provide manually as below:
 1. Obtain below values (copy and keep somewhere)
     - **SQL server connection string**: First, go to the **SQL analytics endpoint** of the **agentic_lake**, go to settings -> SQL endpoint -> copy value under SQL connection string  (paste it somewhere to keep it for now)
-    - **Lakehouse analytics GUID**: Look at the address bar, you should see something like this: *https://app.fabric.microsoft.com/groups/[first string]/mirroredwarehouses/**[second string]**?experience=fabric-developer*
+    - **Lakehouse analytics GUID**: Look at the address bar, you should see something like this: *https://app.fabric.microsoft.com/groups/[first string]/mirroredwarehouses (or lakehouses)/**[second string]**?experience=fabric-developer*
         - copy the value you see in position of second string. 
 2. Now go to: **Fabric_artifacts\agentic_semantic_model.SemanticModel\definition**, open the file called **expressions.tmdl** and replace the values with the ones you just retrieved. *Save the file and push it to your repo*.
 
