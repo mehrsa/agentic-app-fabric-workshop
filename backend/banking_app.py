@@ -46,7 +46,7 @@ AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
 
 # Analytics service URL
-ANALYTICS_SERVICE_URL = "http://127.0.0.1:5002"
+ANALYTICS_SERVICE_URL = os.getenv("ANALYTICS_SERVICE_URL", "/analytics")
 
 if not all([AZURE_OPENAI_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_EMBEDDING_DEPLOYMENT]):
     print("⚠️  Warning: One or more Azure OpenAI environment variables are not set.")
@@ -206,7 +206,10 @@ class Transaction(db.Model):
 def call_analytics_service(endpoint, method='POST', data=None):
     """Helper function to call analytics service"""
     try:
-        url = f"{ANALYTICS_SERVICE_URL}/api/{endpoint}"
+        # If ANALYTICS_SERVICE_URL is relative (e.g. '/analytics'),
+        # requests will need the full host in Azure. For simplicity:
+        base = ANALYTICS_SERVICE_URL.rstrip('/')
+        url = f"{base}/api/{endpoint.lstrip('/')}"
         if method == 'POST':
             response = requests.post(url, json=data, timeout=5)
         else:
