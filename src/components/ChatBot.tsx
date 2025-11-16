@@ -23,8 +23,8 @@ const ChatBot: React.FC<ChatBotProps> = ({ userId }) => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const API_URL = 'http://127.0.0.1:5001/api';
-  const ANALYTICS_API_URL = 'http://127.0.0.1:5002/api';
+  const API_URL = '/api';
+  const ANALYTICS_API_URL = '/analytics/api';
 
   // Always create a new session on component mount (ignoring localStorage)
   useEffect(() => {
