@@ -217,9 +217,9 @@ def call_analytics_service(endpoint, method='POST', data=None):
         base = ANALYTICS_SERVICE_URL.rstrip('/')
         url = f"{base}/api/{endpoint.lstrip('/')}"
         if method == 'POST':
-            response = requests.post(url, json=data, timeout=30)
+            response = requests.post(url, json=data, timeout=60)
         else:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=60)
         return response.json() if response.status_code < 400 else None
     except Exception as e:
         print(f"Analytics service call failed: {e}")
