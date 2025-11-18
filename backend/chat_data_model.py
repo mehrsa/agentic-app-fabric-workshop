@@ -140,7 +140,6 @@ def init_chat_db(database):
             trace_id = str(uuid.uuid4())
             message_list= _to_json_primitive(serialized_messages)
             print("New trace_id generated. Adding all messages for trace_id:", trace_id)
-            tool_call_dict = None
             for msg in message_list:
                 if msg['type'] == 'human':
                     print("Adding human message to chat history")
@@ -154,9 +153,8 @@ def init_chat_db(database):
                 if msg['type'] == "tool":
                     print("Adding tool message to chat history")
                     tool_result_dict = self.add_tool_result_message(msg, trace_id)
-                    if tool_call_dict is not None:
-                        tool_call_dict.update(tool_result_dict)
-                        _ = self.log_tool_usage(tool_call_dict, trace_id)
+                    tool_call_dict.update(tool_result_dict)
+                    _ = self.log_tool_usage(tool_call_dict, trace_id)
             res = "All trace messages added..."
             self.update_session_timestamp()
             return res
@@ -501,5 +499,23 @@ model_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1") # Fallback to gpt-4
 
 def initialize_agent_definitions():
     """Initialize agent definitions in the database"""
-    # (implementation omitted here if unchanged)
-    pass
+    agents_data = [
+        {
+            "name": "banking_agent_v1",
+            "description": "A customer support banking agent to help answer questions about their account and other general banking inquiries.",
+            "llm_config": {
+                "model": model_name,
+                "rate_limit": 50,
+                "token_limit": 1000
+            },
+            "prompt_template": "You are a banking assistant. Answer the user's questions about their bank accounts."
+        }
+    ]
+    
+    for agent in agents_data:
+        existing_agent = AgentDefinition.query.filter_by(name=agent["name"]).first()
+        if not existing_agent:
+            agent_def = AgentDefinition(**agent)
+            db.session.add(agent_def)
+
+    db.session.commit()
