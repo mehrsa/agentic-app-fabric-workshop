@@ -217,9 +217,9 @@ def call_analytics_service(endpoint, method='POST', data=None):
         base = ANALYTICS_SERVICE_URL.rstrip('/')
         url = f"{base}/api/{endpoint.lstrip('/')}"
         if method == 'POST':
-            response = requests.post(url, json=data, timeout=60)
+            response = requests.post(url, json=data, timeout=30)
         else:
-            response = requests.get(url, timeout=60)
+            response = requests.get(url, timeout=15)
         return response.json() if response.status_code < 400 else None
     except Exception as e:
         print(f"Analytics service call failed: {e}")
@@ -365,7 +365,12 @@ def get_user_accounts(user_id: str) -> str:
         return f"Error retrieving accounts: {str(e)}"
 
 def get_transactions_summary(user_id: str, time_period: str = 'this month', account_name: str = None) -> str:
-    """Provides a summary of the user's spending. Can be filtered by a time period and a specific account."""
+    """
+        Provides a *categorical summary* of the user's spending for general periods.
+        - Valid 'time_period' values are: 'this month', 'last 6 months', 'this year'.
+        - **CRITICAL:** Do NOT use this tool for specific date ranges (e.g., 'in 2025', 'last 3 days'), or for detailed transaction lists.
+        - For all specific, custom, or list-based queries, use the `query_database` tool.
+        """
     try:
         query = db.session.query(Transaction.category, db.func.sum(Transaction.amount).label('total_spent')).filter(
             Transaction.type == 'payment'
@@ -600,7 +605,13 @@ def chatbot():
         
         ## How to Answer Questions ##
         - For simple requests like "what are my accounts?" or "what's my spending summary?", use the standard banking tools.
-        - For specific, custom, or list-based data questions (e.g., "Show me my last 5 transactions", "How many savings accounts do I have?"), **go directly to the `query_database` tool**. This is faster.
+        - **`get_transactions_summary` Tool**: Use this ONLY for general categorical summaries (e.g., "What's my spending summary this month?"). It CANNOT handle specific dates or lists.
+        - **`query_database` Tool**: Use this for ALL other data questions. This is your default tool for anything specific.
+            - "Show me my last 5 transactions" -> `query_database`
+            - "How many savings accounts do I have?" -> `query_database`
+            - "What has been my expense in 2025?" -> `query_database`
+            - "How much did I spend at Starbucks?" -> `query_database`
+        - When using `query_database`, you must first use the 'describe' action to see the table structure.
         - When using `query_database`, you must first use the 'describe' action to see the table structure.
         
         ## Database Rules ##

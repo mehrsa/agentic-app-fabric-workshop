@@ -5,7 +5,7 @@ This bypasses MCP complexity and directly uses the database tools
 import json
 import pyodbc
 import re
-from decimal import Decimal  # <-- ADD THIS IMPORT
+from decimal import Decimal
 from shared.connection_manager import connection_manager
 
 class DirectDatabaseTools:
