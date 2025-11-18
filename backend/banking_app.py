@@ -557,7 +557,7 @@ def chatbot():
         
         # Fetch chat history from the analytics service
         history_start = time.time()
-        history_data = call_analytics_service(f"chat/history/{session_id}", method='GET')
+        history_data = None #call_analytics_service(f"chat/history/{session_id}", method='GET')
         history_duration = time.time() - history_start
         print(f"[chatbot] History fetch duration: {history_duration:.2f}s "
               f"(has_history={bool(history_data)})")
@@ -695,7 +695,7 @@ def chatbot():
 
         # calling analytics service to capture this trace
         analytics_call_start = time.time()
-        call_analytics_service("chat/log-trace", data=analytics_data)
+        #call_analytics_service("chat/log-trace", data=analytics_data)
         analytics_call_duration = time.time() - analytics_call_start
         print(f"[chatbot] Analytics log-trace call duration: {analytics_call_duration:.2f}s")
 

@@ -20,7 +20,6 @@ class DirectDatabaseTools:
     
     def describe_table(self, table_name: str, schema: str = "dbo") -> dict:
         """Describe a table's structure"""
-        # ... (this method is unchanged)
         conn = None
         cursor = None
         try:
