@@ -15,11 +15,10 @@ from dotenv import load_dotenv
 from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
 from langchain_community.vectorstores.utils import DistanceStrategy
 from langchain_sqlserver import SQLServer_VectorStore
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.store.memory import InMemoryStore
 from shared.connection_manager import sqlalchemy_connection_creator, connection_manager
 from shared.utils import get_user_id, _serialize_messages
-import requests  # For calling analytics service
 from langgraph.prebuilt import create_react_agent
 from init_data import check_and_ingest_data
 from tools.database_query import query_database
@@ -79,39 +78,42 @@ def get_db_connection():
     """Get a raw DB connection from the connection manager."""
     return connection_manager.create_connection()
 
+def _build_connection_string_from_connection_manager() -> str:
+    """
+    Build a pyodbc-style connection string based on an actual connection that
+    connection_manager can create. This avoids requiring extra env vars.
+    """
+    conn = connection_manager.create_connection()
+    try:
+        # These infos are available on pyodbc connections.
+        server = conn.getinfo(6)   # SQL_SERVER_NAME
+        db_name = conn.getinfo(7)  # SQL_DATABASE_NAME
+
+        # We don't have user/password here, but the DSN/driver details are already
+        # handled by fabricsql_connection_agentic_db inside connection_manager.
+        # For SQLServer_VectorStore we can use a DSN-less connection string that
+        # reuses the same ODBC connectivity via trusted connection.
+        driver = "ODBC Driver 18 for SQL Server"
+
+        odbc_str = (
+            f"DRIVER={{{{{{driver}}}}}};"
+            f"SERVER={server};"
+            f"DATABASE={db_name};"
+            "Trusted_Connection=yes;"
+            "Encrypt=yes;"
+            "TrustServerCertificate=yes;"
+        )
+        # URL encode semi-colons etc. is normally needed, but sqlserver_vectorstore
+        # also accepts raw connection strings via connection_string param.
+        return odbc_str
+    finally:
+        conn.close()
+
 # Initialize vector store for knowledge base (support docs)
-# Reconstruct the connection string using the connection manager’s config
-def _build_connection_string_from_env() -> str:
-    """
-    Build a SQLAlchemy-style connection string from the same environment
-    variables that connection_manager uses.
-    """
-    driver = os.getenv("FABRIC_ODBC_DRIVER") or os.getenv("ODBC_DRIVER", "ODBC Driver 18 for SQL Server")
-    server = os.getenv("FABRIC_SQL_SERVER") or os.getenv("SQL_SERVER")
-    database = os.getenv("FABRIC_SQL_DATABASE") or os.getenv("SQL_DATABASE")
-    user = os.getenv("FABRIC_SQL_USER") or os.getenv("SQL_USER")
-    password = os.getenv("FABRIC_SQL_PASSWORD") or os.getenv("SQL_PASSWORD")
-
-    if not all([server, database, user, password]):
-        raise ValueError("Missing one or more SQL connection environment variables")
-
-    # Typical pyodbc connection string – adjust if your connection_manager expects different details
-    return (
-        f"mssql+pyodbc:///?odbc_connect="
-        f"DRIVER={{{driver}}};"
-        f"SERVER={server};"
-        f"DATABASE={database};"
-        f"UID={user};"
-        f"PWD={password};"
-        f"Encrypt=yes;"
-        f"TrustServerCertificate=no;"
-        f"Connection Timeout=30;"
-    )
-
-connection_url = _build_connection_string_from_env()
+connection_string = _build_connection_string_from_connection_manager()
 
 vector_store = SQLServer_VectorStore(
-    connection_string=connection_url,
+    connection_string=connection_string,
     distance_strategy=DistanceStrategy.COSINE,
     embedding_function=embeddings_client,
     embedding_length=1536,
@@ -119,7 +121,7 @@ vector_store = SQLServer_VectorStore(
 )
 
 # Run data ingestion check (ensures DB has demo data)
-check_and_ingest_data(connection_url, embeddings_client)
+check_and_ingest_data(connection_string, embeddings_client)
 
 def get_user_accounts(user_id: str) -> dict:
     """Get all accounts for a user."""
