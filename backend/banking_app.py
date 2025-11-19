@@ -24,6 +24,7 @@ from langgraph.prebuilt import create_react_agent
 from shared.utils import _serialize_messages
 from init_data import check_and_ingest_data
 from tools.database_query import query_database
+from analytics_service import get_chat_history_for_session, log_chat_trace
 # Load Environment variables and initialize app
 import os
 load_dotenv(override=True)
@@ -557,7 +558,7 @@ def chatbot():
         
         # Fetch chat history from the analytics service
         history_start = time.time()
-        history_data = None #call_analytics_service(f"chat/history/{session_id}", method='GET')
+        history_data = call_analytics_service(f"chat/history/{session_id}", method='GET')
         history_duration = time.time() - history_start
         print(f"[chatbot] History fetch duration: {history_duration:.2f}s "
               f"(has_history={bool(history_data)})")
@@ -695,7 +696,7 @@ def chatbot():
 
         # calling analytics service to capture this trace
         analytics_call_start = time.time()
-        #call_analytics_service("chat/log-trace", data=analytics_data)
+        call_analytics_service("chat/log-trace", data=analytics_data)
         analytics_call_duration = time.time() - analytics_call_start
         print(f"[chatbot] Analytics log-trace call duration: {analytics_call_duration:.2f}s")
 
