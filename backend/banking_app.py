@@ -25,6 +25,7 @@ from shared.utils import _serialize_messages
 from init_data import check_and_ingest_data
 from tools.database_query import query_database
 from analytics_service import get_chat_history_for_session, log_chat_trace
+from chat_data_model import init_chat_db
 # Load Environment variables and initialize app
 import os
 load_dotenv(override=True)
@@ -87,6 +88,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+
+init_chat_db(db)
 
 connection_string = os.getenv('FABRIC_SQL_CONNECTION_URL_AGENTIC')
 connection_url = f"mssql+pyodbc:///?odbc_connect={connection_string}"
