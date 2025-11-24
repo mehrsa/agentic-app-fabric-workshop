@@ -46,7 +46,7 @@ def ingest_initial_data(engine: sqlalchemy.engine.Engine):
         # Filter out empty batches and strip whitespace
         batches = [batch.strip() for batch in batches if batch.strip()]
         
-        print(f"[init_data] Executing {len(batches)} SQL batches...")
+        print(f"[init_data] Executing SQL batches...")
         
         j=1
         with engine.begin() as conn:
