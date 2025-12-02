@@ -1,6 +1,5 @@
 import threading
 import time
-import os
 from shared.connection_manager import connection_manager
 
 def run_banking_service():

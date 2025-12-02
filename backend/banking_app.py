@@ -7,24 +7,23 @@ import traceback
 from dateutil.relativedelta import relativedelta
 # from sqlalchemy import create_engine
 from sqlalchemy.pool import QueuePool
-
+from shared.utils import _serialize_messages
 from flask import Flask, jsonify, request, send_from_directory
+import requests
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
+
 from langchain_openai import AzureOpenAIEmbeddings, AzureChatOpenAI
 from langchain_community.vectorstores.utils import DistanceStrategy
 from langchain_sqlserver import SQLServer_VectorStore
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.tools import tool
 from langgraph.store.memory import InMemoryStore
-from shared.connection_manager import sqlalchemy_connection_creator, connection_manager
-from shared.utils import get_user_id
-import requests  # For calling analytics service
-from langgraph.prebuilt import create_react_agent
-from shared.utils import _serialize_messages
-from init_data import check_and_ingest_data
+
+from shared.connection_manager import sqlalchemy_connection_creator
 from tools.database_query import query_database
-from analytics_service import get_chat_history_for_session, log_chat_trace
+from analytics_service import get_chat_history_for_session
 from chat_data_model import init_chat_db
 # Load Environment variables and initialize app
 import os
@@ -362,6 +361,7 @@ def get_users():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 # AI Chatbot Tool Definitions (same as before)
+@tool
 def get_user_accounts(user_id: str) -> str:
     """Retrieves all accounts for a given user."""
     try:
@@ -375,6 +375,7 @@ def get_user_accounts(user_id: str) -> str:
     except Exception as e:
         return f"Error retrieving accounts: {str(e)}"
 
+@tool
 def get_transactions_summary(user_id: str, time_period: str = 'this month', account_name: str = None) -> str:
     """
         Provides a *categorical summary* of the user's spending for general periods.
@@ -423,6 +424,7 @@ def get_transactions_summary(user_id: str, time_period: str = 'this month', acco
         print(f"ERROR in get_transactions_summary: {e}")
         return json.dumps({"status": "error", "message": f"An error occurred while generating the transaction summary."})
 
+@tool
 def search_support_documents(user_question: str) -> str:
     """Searches the knowledge base for answers to customer support questions using vector search."""
     if not vector_store:
@@ -461,6 +463,7 @@ def search_support_documents(user_question: str) -> str:
         print(f"ERROR in search_support_documents: {e}")
         return "An error occurred while searching for support documents."
 
+@tool
 def create_new_account(user_id: str, account_type: str = 'checking', name: str = None, balance: float = 0.0) -> str:
     """Creates a new bank account for the user."""
     if not name:
@@ -477,6 +480,7 @@ def create_new_account(user_id: str, account_type: str = 'checking', name: str =
         db.session.rollback()
         return f"Error creating account: {str(e)}"
 
+@tool
 def transfer_money(user_id: str, from_account_name: str = None, to_account_name: str = None, amount: float = 0.0, to_external_details: dict = None) -> str:
     """Transfers money between user's accounts or to an external account."""
     if not from_account_name or (not to_account_name and not to_external_details) or amount <= 0:
@@ -508,6 +512,10 @@ def transfer_money(user_id: str, from_account_name: str = None, to_account_name:
     except Exception as e:
         db.session.rollback()
         return f"Error during transfer: {str(e)}"
+@tool
+def query_tool():
+    """Wrapper for database query tool."""
+    return query_database
 
 # Banking API Routes
 @app.route('/api/accounts', methods=['GET', 'POST'])
@@ -538,6 +546,8 @@ def handle_transactions():
         result = json.loads(result_str)
         status_code = 201 if result.get("status") == "success" else 400
         return jsonify(result), status_code
+    
+from multi_agent_banking import create_multi_agent_banking_system
 
 @app.route('/api/chatbot', methods=['POST'])
 def chatbot():
@@ -586,81 +596,22 @@ def chatbot():
         # Extract current user message
         # Build agent input
         agent_prep_start = time.time()
+        banking_system = create_multi_agent_banking_system()
         user_message = messages[-1].get("content", "")
         
-        # Create wrapper functions that bind user_id
-        # This is the key fix - we create proper named functions instead of using partial
-        def get_user_accounts_for_current_user() -> str:
-            """Retrieves all accounts for the current user."""
-            return get_user_accounts(user_id=user_id)
-        
-        def get_transactions_summary_for_current_user(time_period: str = 'this month', account_name: str = None) -> str:
-            """Provides a summary of the current user's spending."""
-            return get_transactions_summary(user_id=user_id, time_period=time_period, account_name=account_name)
-        
-        def create_new_account_for_current_user(account_type: str = 'checking', name: str = None, balance: float = 0.0) -> str:
-            """Creates a new bank account for the current user."""
-            return create_new_account(user_id=user_id, account_type=account_type, name=name, balance=balance)
-        
-        def transfer_money_for_current_user(from_account_name: str = None, to_account_name: str = None, 
-                                            amount: float = 0.0, to_external_details: dict = None) -> str:
-            """Transfers money between current user's accounts or to an external account."""
-            return transfer_money(user_id=user_id, from_account_name=from_account_name, 
-                                to_account_name=to_account_name, amount=amount, 
-                                to_external_details=to_external_details)
-        
-        # Tools list with properly named wrapper functions
-        tools = [
-            get_user_accounts_for_current_user,
-            get_transactions_summary_for_current_user,
-            search_support_documents, 
-            create_new_account_for_current_user,
-            transfer_money_for_current_user,
-            query_database
-        ]
+        all_messages = historical_messages + [HumanMessage(content=user_message)]
+    
+        # Create initial state
+        initial_state = {
+            "messages": all_messages,
+            "current_agent": "",
+            "task_type": "",
+            "user_id": user_id,
+            "session_id": session_id,
+            "final_result": ""
+        }
 
-        # Initialize banking agent with enhanced prompt
-        banking_agent = create_react_agent(
-            model=ai_client,
-            tools=tools,
-            checkpointer=session_memory,
-            prompt=f"""
-            You are a customer support agent for a banking application.
-            
-            **IMPORTANT: You are currently helping user_id: {user_id}**
-            All operations must be performed for this user only.
-            
-            You have access to the following capabilities:
-            1. Standard banking operations (get_user_accounts, get_transactions_summary, transfer_money, create_new_account)
-            2. Knowledge base search (search_support_documents)
-            3. Direct database queries (query_database)
-            
-            ## How to Answer Questions ##
-            - For simple requests like "what are my accounts?" or "what's my spending summary?", use the standard banking tools.
-            - **`get_transactions_summary` Tool**: Use this ONLY for general categorical summaries (e.g., "What's my spending summary this month?"). It CANNOT handle specific dates or lists.
-            - **`query_database` Tool**: Use this for ALL other data questions. This is your default tool for anything specific.
-                - "Show me my last 5 transactions" -> `query_database`
-                - "How many savings accounts do I have?" -> `query_database`
-                - "What has been my expense in 2025?" -> `query_database`
-                - "How much did I spend at Starbucks?" -> `query_database`
-            - When using `query_database`, you must first use the 'describe' action to see the table structure.
-            - When using `query_database`, you must first use the 'describe' action to see the table structure.
-            
-            ## Database Rules ##
-            - You must only access data for the user_id '{user_id}'.
-            - **CRITICAL SQL FIX:** The `datetimeoffset` column type (like 'created_at') will fail. You **MUST** `CAST` it to a string in all SELECT or ORDER BY clauses (e.g., `CAST(created_at AS VARCHAR(30)) AS created_at_str`).
-            
-            ## Response Formatting ##
-            - **Be concise.** Do not explain your internal process (e.g., "I described the tables...").
-            - **Present results directly.**
-            - When a user asks for a list of transactions, format the final answer (after all tool calls are done) as a clean bulleted list.
-            - **Example of a good response:**
-            "Here are your last 5 transactions:
-            - [Date] - $[Amount] - [Description] - [Category] - [Status]
-            - [Date] - $[Amount] - [Description] - [Category] - [Status]"
-            """,
-            name = "banking_agent_v1"
-        )
+
         
         # Thread config for session management
         thread_config = {"configurable": {"thread_id": session_id}}
@@ -669,20 +620,18 @@ def chatbot():
         print(f"[chatbot] Agent prep (prompt, tools, messages) completed in "
               f"{agent_prep_duration:.2f}s")
 
-        trace_start = time.time()
-        print("[chatbot] Invoking banking_agent...")
-        response = banking_agent.invoke(
-            {"messages": all_messages}, 
-            config=thread_config
+        trace_start_time = time.time()
+        result = banking_system.invoke(
+            initial_state, 
+            config= thread_config
         )
-        trace_duration = time.time() - trace_start
+        end_time = time.time()
+        trace_duration = int((end_time - trace_start_time) * 1000)
         print(f"[chatbot] LLM / agent invocation completed in {trace_duration:.2f}s")
 
         print("################### TRACE RESPONSE ######################")
         process_start = time.time()
-        all_messages = response['messages']
-        historical_count = len(historical_messages)
-        final_messages = all_messages[historical_count:]
+        final_messages = result["messages"][len(historical_messages):]
 
         for msg in final_messages:
             print(f"[{msg.__class__.__name__}] {msg.content}")
@@ -690,19 +639,28 @@ def chatbot():
         process_duration = time.time() - process_start
         print(f"[chatbot] Processed agent response in {process_duration:.2f}s")
 
-        # Prepare analytics payload
-        trace_duration_ms = int(trace_duration * 1000)
 
         analytics_call_start = time.time()
-        log_chat_trace(
-            session_id=session_id,
-            user_id=user_id,
-            messages=final_messages,
-            trace_duration_ms=trace_duration_ms,
-        )
+
+        analytics_data = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "messages": _serialize_messages(final_messages),
+            "trace_duration": trace_duration,
+            "agent_used": result["current_agent"],
+            "task_type": result["task_type"],
+            "routing_info": {
+                "coordinator": "coordinator_agent",
+                "target_agent": result["current_agent"],
+                "reason": f"Routed to {result['current_agent']} for {result['task_type']} task"
+            }
+        }
+    
+        call_analytics_service("chat/log-multi-agent-trace", data=analytics_data)
+
         analytics_call_duration = time.time() - analytics_call_start
         print(
-            f"[chatbot] In-process analytics log-trace duration: "
+            f"[chatbot] analytics log-trace duration: "
             f"{analytics_call_duration:.2f}s"
         )
 

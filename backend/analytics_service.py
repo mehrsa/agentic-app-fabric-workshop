@@ -7,6 +7,7 @@ from shared.utils import _serialize_messages, _to_json_primitive
 from langchain_core.messages import BaseMessage
 
 
+
 def get_chat_history_for_session(session_id: str, user_id: str) -> List[Dict[str, Any]]:
     """
     In-process equivalent of GET /analytics/api/chat/history/<session_id>.
@@ -18,8 +19,7 @@ def get_chat_history_for_session(session_id: str, user_id: str) -> List[Dict[str
     from banking_app import db
     
     # Import the model classes (not instances) to access table structure
-    from chat_data_model import ChatHistory
-    
+    from chat_data_model import ChatHistory    
     try:
         # Use db.session directly to avoid the .query property which causes context issues
         from sqlalchemy import desc
@@ -55,7 +55,6 @@ def get_chat_history_for_session(session_id: str, user_id: str) -> List[Dict[str
         traceback.print_exc()
         return []
 
-
 def log_chat_trace(
     session_id: str,
     user_id: str,
@@ -74,7 +73,7 @@ def log_chat_trace(
     from banking_app import db
     
     # Import the model classes to access table structure
-    from chat_data_model import ChatSession, ChatHistory, ToolUsage, ToolDefinition, AgentDefinition
+    from chat_data_model import ChatSession, ChatHistory, ToolUsage, ToolDefinition, AgentDefinition, ChatHistoryManager
     
     try:
         # First ensure the session exists - use db.session.query instead of Model.query
@@ -283,3 +282,4 @@ def log_chat_trace(
         traceback.print_exc()
         db.session.rollback()
         raise
+

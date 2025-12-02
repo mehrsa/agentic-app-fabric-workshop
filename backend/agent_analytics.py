@@ -1,4 +1,3 @@
-import os
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -31,7 +30,7 @@ db = SQLAlchemy(app)
 # Initialize chat history module with database
 init_chat_db(db)
 from chat_data_model import (
-    ToolDefinition, ChatHistoryManager,
+    ToolDefinition, ChatHistoryManager, AgentDefinition, AgentTrace,
     handle_chat_sessions, 
     clear_chat_history, clear_session_data, initialize_tool_definitions, 
     initialize_agent_definitions
@@ -80,8 +79,65 @@ def handle_tool_definitions():
         db.session.add(tool_def)
         db.session.commit()
         return jsonify(tool_def.to_dict()), 201
+    
+@app.route('/api/agents/definitions', methods=['GET', 'POST'])
+def handle_agent_definitions():
+    """Handle agent definitions"""
+    if request.method == 'GET':
+        agents = AgentDefinition.query.all()
+        return jsonify([agent.to_dict() for agent in agents])
+    
+    if request.method == 'POST':
+        data = request.json
+        agent_def = AgentDefinition(
+            name=data['name'],
+            description=data.get('description'),
+            agent_type=data.get('agent_type', 'specialist'),
+            llm_config=data.get('llm_config', {}),
+            prompt_template=data.get('prompt_template', '')
+        )
+        db.session.add(agent_def)
+        db.session.commit()
+        return jsonify(agent_def.to_dict()), 201
+# Enhanced endpoint for logging multi-agent traces
+@app.route('/api/chat/log-multi-agent-trace', methods=['POST'])
+def log_multi_agent_trace():
+    """Log multi-agent trace with enhanced context"""
+    import traceback
 
-# Endpoints for logging messages from banking service
+    try:
+        data = request.json
+        chat_manager = ChatHistoryManager(
+            session_id=data.get('session_id'),
+            user_id=data.get('user_id')
+        )
+        
+        # Extract multi-agent context
+        agent_used = data.get('agent_used', 'unknown')
+        task_type = data.get('task_type', 'general')
+        routing_info = data.get('routing_info', {})
+        
+        # Log the multi-agent trace
+        result = chat_manager.add_multi_agent_trace(
+            serialized_messages=data.get('messages'),
+            trace_duration=data.get('trace_duration', 0),
+            agent_used=agent_used,
+            task_type=task_type,
+            routing_info=routing_info
+        )
+
+        return jsonify({
+            "status": "success",
+            "message": result,
+            "agent_used": agent_used,
+            "task_type": task_type
+        }), 201
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+# Endpoint for logging messages from banking service (single agent)
 @app.route('/api/chat/log-trace', methods=['POST'])
 def log_trace():
     import traceback
