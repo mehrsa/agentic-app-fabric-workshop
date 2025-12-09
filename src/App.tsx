@@ -6,6 +6,7 @@ import Transfer from './components/Transfer';
 import Analytics from './components/Analytics';
 import ChatBot from './components/ChatBot';
 import SignUpModal from './components/SignUpModal';
+import AIModule from './components/AIModule';
 import { MessageCircle, X } from 'lucide-react';
 import { UserProvider, useUser } from './contexts/UserContext';
 
@@ -13,7 +14,8 @@ import ChatSessions from './components/ChatSessions';
 import ToolAnalytics from './components/ToolAnalytics';
 
 import type { Account, Transaction } from './types/banking';
-import { API_URL } from './apiConfig';  // <-- NEW
+import type { AIWidget } from './types/aiModule';
+import { API_URL } from './apiConfig';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -23,6 +25,7 @@ function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingWidget, setEditingWidget] = useState<AIWidget | null>(null);
   
   const { currentUser, isLoading: userLoading } = useUser();
 
@@ -136,6 +139,25 @@ function AppContent() {
     }
   };
 
+  // Handler to open chat from AI Module (with optional widget for editing)
+  const handleOpenChatFromAIModule = (widget?: AIWidget) => {
+    if (widget) {
+      setEditingWidget(widget);
+    }
+    setIsChatOpen(true);
+  };
+
+  // Handler to clear the editing widget
+  const handleClearEditingWidget = () => {
+    setEditingWidget(null);
+  };
+
+  // Handler to close chat
+  const handleCloseChat = () => {
+    setIsChatOpen(false);
+    setEditingWidget(null);
+  };
+
   const renderContent = () => {
     if (userLoading || loading) {
       return <div className="text-center p-8">Loading Banking Data...</div>;
@@ -171,6 +193,8 @@ function AppContent() {
         return <Transfer accounts={accounts} onTransactionComplete={handleTransactionComplete} onAccountCreate={handleAccountCreate} />;
       case 'analytics':
         return <Analytics transactions={transactions} accounts={accounts} />;
+      case 'ai-module':
+        return <AIModule userId={currentUser.id} onOpenChat={handleOpenChatFromAIModule} />;
       case 'chat-sessions':
         return <ChatSessions />;
       case 'tool-analytics':
@@ -191,7 +215,7 @@ function AppContent() {
       </Layout>
       
       <button 
-        onClick={() => setIsChatOpen(!isChatOpen)} 
+        onClick={() => isChatOpen ? handleCloseChat() : setIsChatOpen(true)} 
         className={`fixed bottom-6 right-6 p-4 rounded-full shadow-lg transition-all z-40 ${isChatOpen ? 'bg-red-600' : 'bg-blue-600'} text-white`}
       >
         {isChatOpen ? <X/> : <MessageCircle/>}
@@ -199,7 +223,12 @@ function AppContent() {
       
       {isChatOpen && currentUser && (
         <div className="fixed bottom-24 right-6 w-96 h-[500px] bg-white rounded-xl shadow-2xl border z-30">
-          <ChatBot userId={currentUser.id} />
+          <ChatBot 
+            userId={currentUser.id} 
+            activeTab={activeTab}
+            editingWidget={editingWidget}
+            onClearEditingWidget={handleClearEditingWidget}
+          />
         </div>
       )}
       

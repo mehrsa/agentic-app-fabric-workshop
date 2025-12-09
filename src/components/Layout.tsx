@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Bell, Settings, Menu, X } from 'lucide-react';
 import UserSwitcher from './UserSwitcher';
+import SparklesIcon from './icons/SparklesIcon';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,11 +14,23 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onSig
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navigation = [
-    { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
-    { id: 'transactions', label: 'Transactions', icon: '💳' },
-    { id: 'transfer', label: 'Transfer', icon: '🔄' },
-    { id: 'analytics', label: 'Analytics', icon: '📊' },
+    { id: 'dashboard', label: 'Dashboard', icon: '🏠', customIcon: null },
+    { id: 'transactions', label: 'Transactions', icon: '💳', customIcon: null },
+    { id: 'transfer', label: 'Transfer', icon: '🔄', customIcon: null },
+    { id: 'analytics', label: 'Analytics', icon: '📊', customIcon: null },
+    { id: 'ai-module', label: 'AI Module', icon: null, customIcon: 'sparkles' },
   ];
+
+  const renderNavIcon = (item: typeof navigation[0], isActive: boolean) => {
+    if (item.customIcon === 'sparkles') {
+      return (
+        <span className="mr-2">
+          <SparklesIcon size={18} className={isActive ? 'opacity-100' : 'opacity-70'} />
+        </span>
+      );
+    }
+    return <span className="mr-2">{item.icon}</span>;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -31,21 +44,30 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onSig
                   SecureBank
                 </h1>
               </div>
-              <nav className="hidden md:ml-10 md:flex md:space-x-8">
-                {navigation.map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => onTabChange(item.id)}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      activeTab === item.id
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span className="mr-2">{item.icon}</span>
-                    {item.label}
-                  </button>
-                ))}
+              <nav className="hidden md:ml-10 md:flex md:space-x-4">
+                {navigation.map((item) => {
+                  const isActive = activeTab === item.id;
+                  const isAIModule = item.id === 'ai-module';
+                  
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => onTabChange(item.id)}
+                      className={`px-3 py-2 rounded-md text-sm font-medium transition-all flex items-center ${
+                        isActive
+                          ? isAIModule 
+                            ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 border border-indigo-200 shadow-sm'
+                            : 'bg-blue-50 text-blue-700'
+                          : isAIModule
+                            ? 'text-gray-600 hover:text-indigo-700 hover:bg-indigo-50'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                      }`}
+                    >
+                      {renderNavIcon(item, isActive)}
+                      {item.label}
+                    </button>
+                  );
+                })}
               </nav>
             </div>
             
@@ -71,23 +93,30 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, onTabChange, onSig
         {isMobileMenuOpen && (
           <div className="md:hidden">
             <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3 bg-white border-t">
-              {navigation.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    onTabChange(item.id);
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`block px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors ${
-                    activeTab === item.id
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="mr-2">{item.icon}</span>
-                  {item.label}
-                </button>
-              ))}
+              {navigation.map((item) => {
+                const isActive = activeTab === item.id;
+                const isAIModule = item.id === 'ai-module';
+                
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      onTabChange(item.id);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={`flex items-center px-3 py-2 rounded-md text-base font-medium w-full text-left transition-colors ${
+                      isActive
+                        ? isAIModule
+                          ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700'
+                          : 'bg-blue-50 text-blue-700'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    {renderNavIcon(item, isActive)}
+                    {item.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
