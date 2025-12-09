@@ -25,6 +25,10 @@ from shared.connection_manager import sqlalchemy_connection_creator
 from tools.database_query import query_database
 from analytics_service import get_chat_history_for_session
 from chat_data_model import init_chat_db
+
+from chat_data_model import init_chat_db
+from ai_widget_model import init_ai_widget_db
+from widget_queries import execute_widget_query  # NEW: Import for dynamic widgets
 # Load Environment variables and initialize app
 import os
 load_dotenv(override=True)
@@ -89,6 +93,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 init_chat_db(db)
+AIWidget = init_ai_widget_db(db)
 
 connection_string = os.getenv('FABRIC_SQL_CONNECTION_URL_AGENTIC')
 connection_url = f"mssql+pyodbc:///?odbc_connect={connection_string}"
@@ -546,7 +551,140 @@ def handle_transactions():
         result = json.loads(result_str)
         status_code = 201 if result.get("status") == "success" else 400
         return jsonify(result), status_code
+# ============================================
+# AI Widget API Routes - WITH DYNAMIC SUPPORT
+# ============================================
+
+@app.route('/api/ai-widgets', methods=['GET', 'POST'])
+def handle_ai_widgets():
+    '''Handle AI widget list and creation'''
+    user_id = get_current_user_id()
     
+    if request.method == 'GET':
+        from ai_widget_model import get_user_widgets
+        widgets = get_user_widgets(user_id)
+        return jsonify(widgets)
+    
+    if request.method == 'POST':
+        from ai_widget_model import create_widget
+        data = request.json
+        widget = create_widget(
+            user_id=user_id,
+            title=data.get('title', 'Untitled Widget'),
+            description=data.get('description', ''),
+            widget_type=data.get('widget_type', 'chart'),
+            config=data.get('config', {}),
+            code=data.get('code'),
+            data_mode=data.get('data_mode', 'static'),
+            query_config=data.get('query_config')
+        )
+        return jsonify(widget), 201
+
+
+@app.route('/api/ai-widgets/<widget_id>', methods=['GET', 'PUT', 'DELETE'])
+def handle_ai_widget(widget_id):
+    '''Handle individual AI widget operations'''
+    user_id = get_current_user_id()
+    
+    if request.method == 'GET':
+        from ai_widget_model import get_widget_by_id
+        widget = get_widget_by_id(widget_id, user_id)
+        if not widget:
+            return jsonify({"error": "Widget not found"}), 404
+        return jsonify(widget)
+    
+    if request.method == 'PUT':
+        from ai_widget_model import update_widget
+        data = request.json
+        widget = update_widget(widget_id, user_id, data)
+        if not widget:
+            return jsonify({"error": "Widget not found or access denied"}), 404
+        return jsonify(widget)
+    
+    if request.method == 'DELETE':
+        from ai_widget_model import delete_widget
+        success = delete_widget(widget_id, user_id)
+        if not success:
+            return jsonify({"error": "Widget not found or access denied"}), 404
+        return jsonify({"status": "success", "message": "Widget deleted"})
+
+
+@app.route('/api/ai-widgets/<widget_id>/refresh', methods=['POST'])
+def refresh_ai_widget(widget_id):
+    '''Refresh a dynamic widget with fresh data from the database'''
+    user_id = get_current_user_id()
+    
+    print(f"\n[ai-widgets] ========== REFRESH REQUEST ==========")
+    print(f"[ai-widgets] Widget ID: {widget_id}")
+    print(f"[ai-widgets] User ID: {user_id}")
+    
+    from ai_widget_model import get_widget_by_id, update_widget_data
+    
+    # Get the widget
+    widget = get_widget_by_id(widget_id, user_id)
+    if not widget:
+        print(f"[ai-widgets] ERROR: Widget not found")
+        return jsonify({"error": "Widget not found"}), 404
+    
+    print(f"[ai-widgets] Widget found: {widget.get('title')}")
+    print(f"[ai-widgets] Data mode: {widget.get('data_mode')}")
+    
+    # Check if it's a dynamic widget
+    if widget.get('data_mode') != 'dynamic':
+        return jsonify({
+            "error": "This widget uses static data and cannot be refreshed",
+            "data_mode": widget.get('data_mode', 'static')
+        }), 400
+    
+    # Get query config
+    query_config = widget.get('query_config')
+    if not query_config:
+        return jsonify({"error": "Widget has no query configuration"}), 400
+    
+    print(f"[ai-widgets] Query config: {query_config}")
+    
+    try:
+        # Execute the query to get fresh data
+        print(f"[ai-widgets] Executing query...")
+        fresh_data = execute_widget_query(query_config, user_id, db.session)
+        
+        print(f"[ai-widgets] Query returned {len(fresh_data)} data points:")
+        for item in fresh_data:
+            print(f"[ai-widgets]   - {item}")
+        
+        # Get OLD data for comparison
+        old_data = widget.get('config', {}).get('customProps', {}).get('data', [])
+        print(f"[ai-widgets] Old data had {len(old_data)} points")
+        
+        # Update the widget with new data
+        print(f"[ai-widgets] Updating widget data...")
+        updated_widget = update_widget_data(widget_id, user_id, fresh_data)
+        
+        if not updated_widget:
+            print(f"[ai-widgets] ERROR: update_widget_data returned None")
+            return jsonify({"error": "Failed to update widget data"}), 500
+        
+        # Verify the update
+        new_data_in_widget = updated_widget.get('config', {}).get('customProps', {}).get('data', [])
+        print(f"[ai-widgets] After update, widget has {len(new_data_in_widget)} data points")
+        print(f"[ai-widgets] ========== REFRESH COMPLETE ==========\n")
+        
+        return jsonify({
+            "status": "success",
+            "message": "Widget data refreshed",
+            "widget": updated_widget,
+            "data_points": len(fresh_data)
+        })
+        
+    except Exception as e:
+        print(f"[ai-widgets] Error refreshing widget {widget_id}: {e}")
+        traceback.print_exc()
+        return jsonify({"error": f"Failed to refresh data: {str(e)}"}), 500
+
+####################################################################################
+######################## MAIN CHATBOT FUNCTION #####################################
+####################################################################################
+
 from multi_agent_banking import create_multi_agent_banking_system
 
 @app.route('/api/chatbot', methods=['POST'])
@@ -565,6 +703,8 @@ def chatbot():
         messages = data.get("messages", [])
         session_id = data.get("session_id")
         user_id = data.get("user_id") or get_current_user_id()  # Get from request body or headers
+        create_widget_hint = data.get("create_widget", False)  # Hint from frontend that user wants a widget
+        edit_widget = data.get("edit_widget", None)  # Widget being edited (if any)
         parse_duration = time.time() - parse_start
         print(f"[chatbot] Parsed request in {parse_duration:.2f}s "
               f"(session_id={session_id}, user_id={user_id})")
@@ -596,11 +736,14 @@ def chatbot():
         # Extract current user message
         # Build agent input
         agent_prep_start = time.time()
+
         banking_system = create_multi_agent_banking_system()
         user_message = messages[-1].get("content", "")
         
         all_messages = historical_messages + [HumanMessage(content=user_message)]
-    
+               
+        # Build widget creation/edit instructions if hint is present
+        
         # Create initial state
         initial_state = {
             "messages": all_messages,
