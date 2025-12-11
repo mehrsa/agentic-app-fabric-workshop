@@ -100,6 +100,7 @@ def handle_agent_definitions():
         db.session.commit()
         return jsonify(agent_def.to_dict()), 201
 # Enhanced endpoint for logging multi-agent traces
+    
 @app.route('/api/chat/log-multi-agent-trace', methods=['POST'])
 def log_multi_agent_trace():
     """Log multi-agent trace with enhanced context"""
@@ -112,25 +113,19 @@ def log_multi_agent_trace():
             user_id=data.get('user_id')
         )
         
-        # Extract multi-agent context
-        agent_used = data.get('agent_used', 'unknown')
-        task_type = data.get('task_type', 'general')
-        routing_info = data.get('routing_info', {})
-        
         # Log the multi-agent trace
         result = chat_manager.add_multi_agent_trace(
             serialized_messages=data.get('messages'),
             trace_duration=data.get('trace_duration', 0),
-            agent_used=agent_used,
-            task_type=task_type,
-            routing_info=routing_info
+            event_times=data.get('event_times', []),
+            nodes_list=data.get('nodes_list', [])
         )
 
         return jsonify({
             "status": "success",
             "message": result,
-            "agent_used": agent_used,
-            "task_type": task_type
+            "agent_used": "multi-agent",
+            "task_type": "banking"
         }), 201
 
     except Exception as e:

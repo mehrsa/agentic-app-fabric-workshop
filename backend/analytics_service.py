@@ -5,6 +5,10 @@ from typing import List, Dict, Any
 
 from shared.utils import _serialize_messages, _to_json_primitive
 from langchain_core.messages import BaseMessage
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 
@@ -31,7 +35,8 @@ def get_chat_history_for_session(session_id: str, user_id: str) -> List[Dict[str
             ChatHistory.content, 
             ChatHistory.trace_end
         ).filter(
-            ChatHistory.session_id == session_id
+            ChatHistory.session_id == session_id,
+            ChatHistory.user_id == user_id
         ).order_by(
             desc(ChatHistory.trace_end)
         ).limit(50).all()
@@ -283,3 +288,213 @@ def log_chat_trace(
         db.session.rollback()
         raise
 
+# Add to analytics_service.py
+
+from flask import Flask, jsonify, request
+from chat_data_model import ChatHistoryManager, AgentTrace
+
+def log_multi_agent_trace(data: dict):
+    """
+    Log a complete multi-agent interaction with step-by-step traces
+    
+    Expected payload:
+    {
+        "session_id": "session_abc123",
+        "user_id": "user_5",
+        "messages": [...],  # Serialized messages
+        "agent_used": "account_agent",
+        "task_type": "account_management",
+        "trace_duration": 1234,
+        "step_traces": [
+            {
+                "step_name": "coordinator_routing",
+                "agent_name": "coordinator_agent",
+                "reasoning": "Matched 3 keywords",
+                "timestamp": "2025-01-01T12:00:00",
+                "duration_ms": 50,
+                "tokens_used": {"total": 0, "prompt": 0, "completion": 0},
+                "matched_keywords": ["account", "balance"],
+                "selected_agent": "account_agent"
+            },
+            {
+                "step_name": "account_agent_execution",
+                "agent_name": "account_agent",
+                "reasoning": "Processed account tasks",
+                "timestamp": "2025-01-01T12:00:01",
+                "duration_ms": 1200,
+                "tokens_used": {"total": 150, "prompt": 80, "completion": 70}
+            }
+        ],
+        "total_tokens": 150,
+        "coordinator_tokens": 0,
+        "coordinator_reasoning": "Matched 3 account keywords"
+    }
+    """
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+        user_id = data.get('user_id')
+        messages = data.get('messages', [])
+        step_traces = data.get('step_traces', [])
+        
+        if not session_id or not user_id:
+            return jsonify({"error": "session_id and user_id are required"}), 400
+        
+        # Initialize chat history manager
+        chat_manager = ChatHistoryManager(session_id=session_id, user_id=user_id)
+        
+        # Generate trace_id if not provided
+        import uuid
+        trace_id = data.get('trace_id') or str(uuid.uuid4())
+        
+        # Log all messages (existing functionality)
+        for msg in messages:
+            msg_type = msg.get('type', 'unknown')
+            content = msg.get('content', '')
+            
+            if msg_type == 'human':
+                chat_manager.add_user_message(content, trace_id=trace_id)
+            elif msg_type == 'ai':
+                agent_name = data.get('agent_used', 'unknown_agent')
+                chat_manager.add_ai_message(
+                    content=content,
+                    trace_id=trace_id,
+                    agent_name=agent_name,
+                    agent_type=data.get('task_type', 'unknown'),
+                    model_name=os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4'),
+                    total_tokens=data.get('total_tokens', 0)
+                )
+            elif msg_type == 'tool':
+                tool_name = msg.get('name', 'unknown_tool')
+                tool_input = msg.get('args', {})
+                chat_manager.add_tool_call_message(
+                    tool_name=tool_name,
+                    tool_input=tool_input,
+                    trace_id=trace_id,
+                    agent_name=data.get('agent_used')
+                )
+        
+        # Log step traces (NEW)
+        if step_traces:
+            chat_manager.log_step_traces(trace_id=trace_id, step_traces=step_traces)
+        
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "trace_id": trace_id,
+            "steps_logged": len(step_traces),
+            "messages_logged": len(messages)
+        }), 201
+        
+    except Exception as e:
+        print(f"Error logging multi-agent trace: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+
+def get_session_traces(session_id):
+    from banking_app import db
+    """
+    Retrieve all step traces for a specific session
+    
+    Optional query params:
+    - trace_id: Filter by specific trace
+    - user_id: Verify user ownership
+    """
+    try:
+        user_id = request.args.get('user_id')
+        trace_id = request.args.get('trace_id')
+        
+        # Query traces
+        query = AgentTrace.query.filter_by(session_id=session_id)
+        
+        if user_id:
+            query = query.filter_by(user_id=user_id)
+        
+        if trace_id:
+            query = query.filter_by(trace_id=trace_id)
+        
+        traces = query.order_by(
+            AgentTrace.execution_start,
+            AgentTrace.step_order
+        ).all()
+        
+        # Group by trace_id
+        traces_by_id = {}
+        for trace in traces:
+            tid = trace.trace_id
+            if tid not in traces_by_id:
+                traces_by_id[tid] = []
+            traces_by_id[tid].append(trace.to_dict())
+        
+        return jsonify({
+            "session_id": session_id,
+            "total_traces": len(traces_by_id),
+            "traces": traces_by_id
+        })
+        
+    except Exception as e:
+        print(f"Error retrieving traces: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+
+def get_traces_summary():
+    from banking_app import db
+    """
+    Get aggregated trace analytics
+    
+    Query params:
+    - user_id: Filter by user
+    - start_date: ISO format
+    - end_date: ISO format
+    - agent_name: Filter by specific agent
+    """
+    try:
+        from sqlalchemy import func
+        
+        user_id = request.args.get('user_id')
+        agent_name = request.args.get('agent_name')
+        
+        # Build query
+        query = db.session.query(
+            AgentTrace.target_agent,
+            AgentTrace.task_type,
+            func.count(AgentTrace.trace_step_id).label('total_steps'),
+            func.avg(AgentTrace.execution_duration_ms).label('avg_duration_ms'),
+            func.sum(AgentTrace.tokens_used).label('total_tokens'),
+            func.count(func.distinct(AgentTrace.session_id)).label('unique_sessions')
+        )
+        
+        if user_id:
+            query = query.filter(AgentTrace.user_id == user_id)
+        
+        if agent_name:
+            query = query.filter(AgentTrace.target_agent == agent_name)
+        
+        results = query.group_by(
+            AgentTrace.target_agent,
+            AgentTrace.task_type
+        ).all()
+        
+        summary = []
+        for row in results:
+            summary.append({
+                "agent": row.target_agent,
+                "task_type": row.task_type,
+                "total_steps": row.total_steps,
+                "avg_duration_ms": round(row.avg_duration_ms, 2) if row.avg_duration_ms else 0,
+                "total_tokens": row.total_tokens or 0,
+                "unique_sessions": row.unique_sessions
+            })
+        
+        return jsonify({
+            "summary": summary,
+            "total_agents": len(summary)
+        })
+        
+    except Exception as e:
+        print(f"Error generating trace summary: {e}")
+        return jsonify({"error": str(e)}), 500

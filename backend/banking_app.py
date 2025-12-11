@@ -685,7 +685,7 @@ def refresh_ai_widget(widget_id):
 ######################## MAIN CHATBOT FUNCTION #####################################
 ####################################################################################
 
-from multi_agent_banking import create_multi_agent_banking_system
+from multi_agent_banking import create_multi_agent_banking_system, execute_trace
 
 @app.route('/api/chatbot', methods=['POST'])
 def chatbot():
@@ -703,8 +703,6 @@ def chatbot():
         messages = data.get("messages", [])
         session_id = data.get("session_id")
         user_id = data.get("user_id") or get_current_user_id()  # Get from request body or headers
-        create_widget_hint = data.get("create_widget", False)  # Hint from frontend that user wants a widget
-        edit_widget = data.get("edit_widget", None)  # Widget being edited (if any)
         parse_duration = time.time() - parse_start
         print(f"[chatbot] Parsed request in {parse_duration:.2f}s "
               f"(session_id={session_id}, user_id={user_id})")
@@ -720,7 +718,7 @@ def chatbot():
         
         # Reconstruct messages and session memory
         reconstruct_start = time.time()
-        session_memory, historical_messages = reconstruct_messages_from_history(raw_history)
+        _, historical_messages = reconstruct_messages_from_history(raw_history)
         reconstruct_duration = time.time() - reconstruct_start
         print(f"[chatbot] Reconstructed history in {reconstruct_duration:.2f}s: "
               f"{len(historical_messages)} historical messages")
@@ -741,17 +739,18 @@ def chatbot():
         user_message = messages[-1].get("content", "")
         
         all_messages = historical_messages + [HumanMessage(content=user_message)]
-               
-        # Build widget creation/edit instructions if hint is present
+
         
         # Create initial state
         initial_state = {
             "messages": all_messages,
+            "from_agent": "",
             "current_agent": "",
             "task_type": "",
             "user_id": user_id,
             "session_id": session_id,
-            "final_result": ""
+            "final_result": "",
+            "time_taken":0
         }
         print("state being passed: ", initial_state)
 
@@ -764,39 +763,44 @@ def chatbot():
               f"{agent_prep_duration:.2f}s")
 
         trace_start_time = time.time()
-        result = banking_system.invoke(
-            initial_state, 
-            config= thread_config
-        )
+
+        trace_events, result= execute_trace(banking_system, initial_state, thread_config)
+
         end_time = time.time()
         trace_duration = int((end_time - trace_start_time) * 1000)
-        print(f"[chatbot] LLM / agent invocation completed in {trace_duration:.2f}s")
-
-        print("################### TRACE RESPONSE ######################")
         process_start = time.time()
-        final_messages = result["messages"][len(historical_messages):]
 
-        for msg in final_messages:
-            print(f"[{msg.__class__.__name__}] {msg.content}")
-        
         process_duration = time.time() - process_start
         print(f"[chatbot] Processed agent response in {process_duration:.2f}s")
-
-
+        from shared.utils import _to_json_primitive, _serialize_messages
+        
         analytics_call_start = time.time()
+        node_names = []
+        serialized_events = []
+        time_list = []
+        for event in trace_events:
+            node_name = list(event.keys())[0]
+            event_msg = event[node_name].get("messages")
+            event_time = event[node_name].get("time_taken", 0)
+            # print(event_msg)
+            serial_events = _serialize_messages(event_msg)
+            node_names.append(node_name)
+            serialized_events.append(serial_events)
+            time_list.append(event_time)
+
+        for i in range(len(serialized_events)):
+            print(f"[Serialized Message] {_to_json_primitive(serialized_events[i])}")
+            print(f"[Node Name] {node_names[i]}")
+            print(f"[Event Time] {time_list[i]} ms")
+        # print("Serialized Messages for Analytics: ", message_list)
 
         analytics_data = {
+            "event_times": time_list,
+            "nodes_list": node_names,
             "session_id": session_id,
             "user_id": user_id,
-            "messages": _serialize_messages(final_messages),
-            "trace_duration": trace_duration,
-            "agent_used": result["current_agent"],
-            "task_type": result["task_type"],
-            "routing_info": {
-                "coordinator": "coordinator_agent",
-                "target_agent": result["current_agent"],
-                "reason": f"Routed to {result['current_agent']} for {result['task_type']} task"
-            }
+            "messages": serialized_events,
+            "trace_duration": trace_duration
         }
     
         call_analytics_service("chat/log-multi-agent-trace", data=analytics_data)
@@ -812,7 +816,7 @@ def chatbot():
         print("========== /api/chatbot request finished ==========\n")
 
         return jsonify({
-            "response": final_messages[-1].content,
+            "response": result,#final_messages[-1].content,
             "session_id": session_id,
             "tools_used": []
         })
