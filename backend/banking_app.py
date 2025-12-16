@@ -703,9 +703,43 @@ def chatbot():
         messages = data.get("messages", [])
         session_id = data.get("session_id")
         user_id = data.get("user_id") or get_current_user_id()  # Get from request body or headers
+        create_widget_hint = data.get("create_widget", False)  # Hint from frontend that user wants a widget
+        edit_widget = data.get("edit_widget", None)  # Widget being edited (if any)
         parse_duration = time.time() - parse_start
         print(f"[chatbot] Parsed request in {parse_duration:.2f}s "
               f"(session_id={session_id}, user_id={user_id})")
+        
+        widget_instructions = ""
+        if edit_widget:
+            widget_instructions = f"""
+            
+            ## IMPORTANT: Widget EDIT Request Detected ##
+            The user wants to MODIFY an existing widget. Here are the details:
+            - Widget ID: {edit_widget.get('widget_id')}
+            - Current Title: {edit_widget.get('title')}
+            - Current Chart Type: {edit_widget.get('chart_type')}
+            - Current Data Mode: {edit_widget.get('data_mode')}
+            - Current Query Config: {edit_widget.get('query_config')}
+            
+            Use the `update_ai_widget_for_current_user` tool to modify this widget.
+            You MUST pass widget_id="{edit_widget.get('widget_id')}" along with the fields to change.
+            
+            Common modifications:
+            - To change chart type: chart_type="pie" (or "bar", "line", "area")
+            - To change title: title="New Title"
+            - To change time range: time_range="last_3_months"
+            - To change query type: query_type="monthly_trend"
+            """
+        elif create_widget_hint:
+            widget_instructions = """
+            
+            ## IMPORTANT: Widget Creation Request Detected ##
+            The user wants to create a visualization in their AI Module. You MUST:
+            1. Determine if the widget should be DYNAMIC or STATIC based on the request
+            2. For DYNAMIC widgets: use query_type and time_range parameters, DO NOT fetch data manually
+            3. For STATIC widgets: first gather data, then pass it in the 'data' parameter
+            4. Tell the user the widget was created and whether it's dynamic (refreshable) or static
+            """
         
         # Fetch chat history from the analytics service
         history_start = time.time()
@@ -750,7 +784,8 @@ def chatbot():
             "user_id": user_id,
             "session_id": session_id,
             "final_result": "",
-            "time_taken":0
+            "time_taken":0,
+            "widget_instructions": widget_instructions
         }
         print("state being passed: ", initial_state)
 
@@ -782,17 +817,10 @@ def chatbot():
             node_name = list(event.keys())[0]
             event_msg = event[node_name].get("messages")
             event_time = event[node_name].get("time_taken", 0)
-            # print(event_msg)
             serial_events = _serialize_messages(event_msg)
             node_names.append(node_name)
             serialized_events.append(serial_events)
             time_list.append(event_time)
-
-        # for i in range(len(serialized_events)):
-        #     print(f"[Serialized Message] {_to_json_primitive(serialized_events[i])}")
-        #     print(f"[Node Name] {node_names[i]}")
-        #     print(f"[Event Time] {time_list[i]} ms")
-        # print("Serialized Messages for Analytics: ", message_list)
 
         analytics_data = {
             "event_times": time_list,

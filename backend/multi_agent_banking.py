@@ -16,6 +16,7 @@ class BankingAgentState(TypedDict):
     session_id: str
     final_result: str
     time_taken: float
+    widget_instructions: str
 
 # Multi-Agent Node Functions
 
@@ -99,7 +100,7 @@ def support_agent_node(state: BankingAgentState):
 def visualization_agent_node(state: BankingAgentState):
     """Handle visualization/widget creation tasks."""
     user_id = state["user_id"]
-    visualization_agent = create_visualization_agent(user_id)
+    visualization_agent = create_visualization_agent(user_id, state["widget_instructions"])
     
     thread_config = {"configurable": {"thread_id": f"visualization_{state['session_id']}"}}
     start_time = time.time()
@@ -160,9 +161,6 @@ def execute_trace(banking_system, initial_state, thread_config):
     # i = 0
     for event in banking_system.stream(initial_state, config=thread_config, stream_mode = "updates"):
         node_name = list(event.keys())[0]
-        # print("setp: ", i)
-        # print(node_name)
-        # print(event)
         events.append(event)
 
     final_result = event[node_name].get("final_result")

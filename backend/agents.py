@@ -58,7 +58,7 @@ def create_support_agent():
     tools = get_support_tools()
     
     system_prompt = """You are a customer support agent that provides immediate, complete answers.
-
+            
             ## CRITICAL RULES ##
             1. **ANSWER IMMEDIATELY**: Use the knowledge base tool and provide complete answer in ONE response
             2. **NO STATUS UPDATES**: Don't say "I'm searching..." or "Let me look that up..."
@@ -82,7 +82,8 @@ def create_support_agent():
 # VISUALIZATION AGENT
 # ============================================
 
-def create_visualization_agent(user_id: str):
+
+def create_visualization_agent(user_id: str, widget_instructions: str):
     """Agent specialized in widget/visualization creation"""
     llm = ai_client
     tools = get_visualization_tools(user_id)
@@ -125,6 +126,15 @@ def create_visualization_agent(user_id: str):
                     - **create_simulation_widget_tool**: Create interactive calculators
                     - **list_user_widgets_tool**: Show user's widgets
                     - **delete_widget_tool**: Remove widgets
+
+                    ## AI Widget UPDATING ##
+                    
+                    When users want to modify an existing widget (change chart type, title, time range, etc.):
+                    - Use `update_ai_widget_for_current_user` with the widget_id
+                    - You can change: title, description, chart_type, colors, data_mode, query_type, time_range
+                    - Example: To change a pie chart to bar chart: update_ai_widget_for_current_user(widget_id="widget_xxx", chart_type="bar")
+
+                    {widget_instructions}
 
                     ## Response Format ##
                     - Be conversational and helpful
