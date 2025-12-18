@@ -686,6 +686,7 @@ def refresh_ai_widget(widget_id):
 ####################################################################################
 
 from multi_agent_banking import create_multi_agent_banking_system, execute_trace
+from chat_data_model import prep_multi_agent_log_load, handle_content_safety_error
 
 @app.route('/api/chatbot', methods=['POST'])
 def chatbot():
@@ -798,44 +799,41 @@ def chatbot():
               f"{agent_prep_duration:.2f}s")
 
         trace_start_time = time.time()
+        try:
+            trace_events, result= execute_trace(banking_system, initial_state, thread_config)
+            end_time = time.time()
+            trace_duration = int((end_time - trace_start_time) * 1000)
+            analytics_call_start = time.time()
+            
 
-        trace_events, result= execute_trace(banking_system, initial_state, thread_config)
+            analytics_data = prep_multi_agent_log_load(trace_events=trace_events,
+                                                        session_id=session_id,
+                                                        user_id=user_id,
+                                                        trace_duration=trace_duration)
+            # step1- uncomment to test simulate extremely sensitive content. this just triggers the exception handling
+            # result = res_dict["content"]  
+            _ = call_analytics_service("chat/log-multi-agent-trace", data=analytics_data)
 
-        end_time = time.time()
-        trace_duration = int((end_time - trace_start_time) * 1000)
+            analytics_call_duration = int((time.time() - analytics_call_start) * 1000)
+        # handling extremely sensitive content error that caused llm provider to block the response
+        except Exception as e:
+            end_time = time.time()
+            trace_duration = int((end_time - trace_start_time) * 1000)
+            # step2- uncomment to test extremely sensitive content
+            # from unsafe_content_simulator import  simulate_safety_error 
+            #simulate_error = simulate_safety_error(jailbreak_detected=True, jailbreak_filtered=True)
+            #e=simulate_error.response
+            analytics_call_start = time.time()
+             
+            result_dict = handle_content_safety_error(session_id=session_id, user_id=user_id, error = str(e), user_message=user_message)
+            result = result_dict["message"].get("content")
+            _ = call_analytics_service("chat/log-content-safety-violation", data=result_dict)
+            analytics_call_duration = int((time.time() - analytics_call_start) * 1000)
         process_start = time.time()
 
         process_duration = time.time() - process_start
         print(f"[chatbot] Processed agent response in {process_duration:.2f}s")
-        from shared.utils import _to_json_primitive, _serialize_messages
-        
-        
-        node_names = []
-        serialized_events = []
-        time_list = []
-        for event in trace_events:
-            node_name = list(event.keys())[0]
-            event_msg = event[node_name].get("messages")
-            event_time = event[node_name].get("time_taken", 0)
-            serial_events = _serialize_messages(event_msg)
-            node_names.append(node_name)
-            serialized_events.append(serial_events)
-            time_list.append(event_time)
 
-        analytics_data = {
-            "event_times": time_list,
-            "nodes_list": node_names,
-            "session_id": session_id,
-            "user_id": user_id,
-            "messages": serialized_events,
-            "trace_duration": trace_duration
-        }
-
-        analytics_call_start = time.time()
-    
-        res = call_analytics_service("chat/log-multi-agent-trace", data=analytics_data)
-
-        analytics_call_duration = time.time() - analytics_call_start
         print(
             f"[chatbot] analytics log-trace duration: "
             f"{analytics_call_duration:.2f}s"
@@ -846,7 +844,7 @@ def chatbot():
         print("========== /api/chatbot request finished ==========\n")
 
         return jsonify({
-            "response": result,#final_messages[-1].content,
+            "response": result,
             "session_id": session_id,
             "tools_used": []
         })

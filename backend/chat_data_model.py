@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 import os
 from flask import jsonify
-from shared.utils import _to_json_primitive
+from shared.utils import _serialize_messages, _to_json_primitive
 from shared.utils import get_user_id
 
 # Global variables that will be set by the main app
@@ -14,6 +14,145 @@ ToolDefinition = None
 ChatHistoryManager = None
 AgentDefinition = None
 AgentTrace = None
+
+def handle_content_safety_error(error, session_id: str, user_id: str, trace_id: str = None, 
+                                agent_name: str = None, user_message: str = None):
+    """
+    Handle openai.BadRequestError related to content safety violations.
+    
+    Creates a special AI message response that complies with the ChatHistory data model
+    and captures the content safety reason that triggered the error.
+    
+    Args:
+        error: The openai.BadRequestError exception
+        session_id: Current chat session ID
+        user_id: Current user ID
+        trace_id: Optional trace ID (will generate new if not provided)
+        agent_name: Name of the agent that triggered the error
+        user_message: The user's original message that triggered the filter
+    
+    Returns:
+        dict: A serialized message object compatible with add_ai_message() format
+    """
+    
+    if not trace_id:
+        trace_id = str(uuid.uuid4())
+    
+    # Extract content safety information from the error
+    content_filter_info = None
+    error_message = str(error)
+    filter_category = "unknown"
+    
+    try:
+        # Azure OpenAI BadRequestError typically contains JSON in the message
+        error_body = getattr(error, 'body', None)
+        
+        if error_body and isinstance(error_body, dict):
+            # Extract content filter results from error body
+            error_details = error_body.get('error', {})
+            innererror = error_details.get('innererror', {})
+            content_filter_result = innererror.get('content_filter_result', {})
+            
+            if content_filter_result:
+                content_filter_info = content_filter_result
+                
+                # Determine which filter was triggered
+                for category in ['hate', 'self_harm', 'sexual', 'violence', 'jailbreak']:
+                    if content_filter_result.get(category, {}).get('filtered', False):
+                        filter_category = category
+                        break
+        
+        # Fallback: parse error message string
+        print("ERROR MESSAGE:", error_message.lower())
+        if not content_filter_info and 'content_filter' in error_message.lower():
+            # Try to extract category from error message
+            for category in ['hate', 'self_harm', 'sexual', 'violence', 'jailbreak']:
+                if category in error_message.lower():
+                    filter_category = category
+                    if(category=="jailbreak"):
+                        content_filter_info = {
+                            category: {
+                                "filtered": True,
+                                "detected": True,
+
+                            }
+                        }
+                    else:
+                        content_filter_info = {
+                            category: {
+                                "filtered": True,
+                                "severity": "high"
+                            }
+                        }
+                else:
+                    if(category=="jailbreak"):
+                        content_filter_info = {
+                            category: {
+                                "filtered": False,
+                                "detected": False,
+
+                            }
+                        }
+                    else:
+                        content_filter_info = {
+                            category: {
+                                "filtered": False,
+                                "severity": "safe"
+                            }
+                        }
+
+    except Exception as parse_error:
+        print(f"[Content Safety Handler] Error parsing content filter details: {parse_error}")
+    
+    # Create a safe response message
+    safety_message = (
+        f"I apologize, but I cannot process this request due to content safety policies. "
+        f"The message was flagged for {filter_category} content. "
+        f"Please rephrase your request in a way that complies with our community guidelines."
+    )
+    
+    # Create a synthetic AI message that matches the expected structure
+    message_id = f"msg_{uuid.uuid4()}"
+    
+    safety_response = {
+        "__class__": "AIMessage",
+        "id": message_id,
+        "content": safety_message,
+        "response_metadata": {
+            "model_name": os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1"),
+            "finish_reason": "content_filter",
+            "token_usage": {
+                "total_tokens": 0,
+                "completion_tokens": 0,
+                "prompt_tokens": 0
+            },
+            "prompt_filter_results": [{
+                "content_filter_results": content_filter_info or {
+                    "error": True,
+                    "category": filter_category,
+                    "raw_error": error_message[:500]  # Truncate long error messages
+                }
+            }]
+        },
+        "additional_kwargs": {}
+    }
+    
+    print(f"[Content Safety Handler] Generated safety response for {filter_category} violation")
+    print(f"[Content Safety Handler] Trace ID: {trace_id}")
+    print(f"[Content Safety Handler] Content filter details: {content_filter_info}")
+    
+    return {
+        "trace_id": trace_id,
+        "session_id": session_id,
+        "user_id": user_id,
+        "message": safety_response,
+        "agent_name": "coordinator",
+        "user_message": user_message,
+        "filter_category": filter_category,
+        "content_filter_info": content_filter_info
+    }
+
+
 
 def init_chat_db(database):
     """Initialize the database reference and create models"""
@@ -191,8 +330,7 @@ def init_chat_db(database):
                 
                 # Create new agent definition dynamically
                 default_llm_config = llm_config or {
-                    "model": os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1"),
-                    "temperature": 0.1
+                    "model": os.getenv("AZURE_OPENAI_DEPLOYMENT", "not found. Check your .env file"),
                 }
                 
                 default_description = description or f"Dynamically discovered agent: {agent_name}"
@@ -708,7 +846,7 @@ def initialize_tool_definitions():
     db.session.commit()
     print("Multi-agent tool definitions initialized")
 
-model_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1") # Fallback to gpt-4.1 if not set
+model_name = os.getenv("AZURE_OPENAI_DEPLOYMENT", "model info not found. Check your .env file") 
 
 def initialize_agent_definitions():
     """Initialize agent definitions for multi-agent banking system"""
@@ -716,19 +854,19 @@ def initialize_agent_definitions():
         {
             "name": "account_agent", 
             "description": "Specialized in account management operations",
-            "llm_config": {"model": "gpt-4.1", "temperature": 0.1},
+            "llm_config": {"model": model_name},
             "prompt_template": "You are an Account Management Agent for a banking system."
         },
         {
             "name": "transaction_agent",
             "description": "Specialized in transaction operations",
-            "llm_config": {"model": "gpt-4.1", "temperature": 0.1},
+            "llm_config": {"model": model_name},
             "prompt_template": "You are a Transaction Agent for a banking system."
         },
         {
             "name": "support_agent",
             "description": "Specialized in customer support",
-            "llm_config": {"model": "gpt-4.1", "temperature": 0.1},
+            "llm_config": {"model": model_name},
             "prompt_template": "You are a Customer Support Agent for a banking system."
         }
     ]
@@ -746,3 +884,27 @@ def initialize_agent_definitions():
     
     db.session.commit()
     print("Multi-agent definitions initialized")
+
+def prep_multi_agent_log_load(trace_events, session_id, user_id, trace_duration: int=0):
+    node_names = []
+    serialized_events = []
+    time_list = []
+
+    for event in trace_events:
+        node_name = list(event.keys())[0]
+        event_msg = event[node_name].get("messages")
+        event_time = event[node_name].get("time_taken", 0)
+        serial_events = _serialize_messages(event_msg)
+        node_names.append(node_name)
+        serialized_events.append(serial_events)
+        time_list.append(event_time)
+
+    analytics_data = {
+        "event_times": time_list,
+        "nodes_list": node_names,
+        "session_id": session_id,
+        "user_id": user_id,
+        "messages": serialized_events,
+        "trace_duration": trace_duration
+    }
+    return analytics_data

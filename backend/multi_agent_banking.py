@@ -154,7 +154,6 @@ def create_multi_agent_banking_system():
     return workflow.compile(checkpointer=MemorySaver())
 
 
-
 def execute_trace(banking_system, initial_state, thread_config):
     events = []
     final_result = None

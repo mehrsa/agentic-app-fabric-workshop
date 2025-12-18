@@ -1,3 +1,4 @@
+import uuid
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
@@ -131,7 +132,80 @@ def log_multi_agent_trace():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+    
+@app.route('/api/chat/log-content-safety-violation', methods=['POST'])   
+def log_content_safety_violation():
+    """
+    Log a content safety violation to the chat history.
+    
+    This is a convenience wrapper that:
+    1. Handles the BadRequestError
+    2. Creates appropriate messages
+    3. Logs them to the database
+    
+    Args:
+        error: The openai.BadRequestError exception
+        session_id: Current chat session ID
+        user_id: Current user ID
+        user_message: The user's original message (optional)
+        agent_name: Name of the agent that triggered the error
+    
+    Returns:
+        json payload with status and logged message details.
+    """
+    res_dict = request.json
+    try:
+        # Initialize chat history manager
+        chat_manager = ChatHistoryManager(session_id=res_dict.get('session_id'), user_id=res_dict.get('user_id'))
+        
+        trace_id = res_dict["trace_id"]
+        
+        # Log the user's message if provided
+        if res_dict.get("user_message"):
+            user_msg = {
+                "__class__": "HumanMessage",
+                "id": f"msg_{uuid.uuid4()}",
+                "content": res_dict.get("user_message")
+            }
+            chat_manager.add_human_message(
+                message=user_msg,
+                trace_id=trace_id,
+                routing_step=0
+            )
+        
+        # Log the safety response
+        chat_manager.add_ai_message(
+            message=res_dict["message"],
+            trace_id=trace_id,
+            step_duration=0,
+            agent_name=res_dict["agent_name"],
+            routing_step=1
+        )
+        
+        # Log the agent trace
+        chat_manager._log_agent_routing(
+            trace_id=trace_id,
+            step_number=1,
+            from_agent="system",
+            current_agent=res_dict["agent_name"],
+            execution_duration_ms=0
+        )
+        
+        print(f"[Content Safety Handler] Logged violation to database. Session: {res_dict.get('session_id')}")
+        return jsonify({
+            "status": "success",
+            "message": res_dict["message"]["content"],
+            "agent_used": "coordinator",
+            "task_type": "banking"
+        }), 201
 
+        
+    except Exception as log_error:
+        print(f"[Content Safety Handler] Failed to log safety violation: {log_error}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+    
 # Endpoint for logging messages from banking service (single agent)
 @app.route('/api/chat/log-trace', methods=['POST'])
 def log_trace():
