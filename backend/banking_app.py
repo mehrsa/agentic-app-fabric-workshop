@@ -799,6 +799,15 @@ def chatbot():
               f"{agent_prep_duration:.2f}s")
 
         trace_start_time = time.time()
+        trace_id = str(uuid.uuid4())
+        print("[New Trace] Starting new trace with ID:", trace_id)
+
+        from azure.eventhub import EventHubProducerClient, EventData
+        eventHubConnString = os.getenv("FABRIC_EVENT_HUB_CONNECTION_STRING")
+        eventHubName = os.getenv("FABRIC_EVENT_HUB_NAME")
+
+        producer_events = EventHubProducerClient.from_connection_string(conn_str=eventHubConnString, eventhub_name=eventHubName)
+        from agent_analytics import stream_load
         try:
             trace_events, result= execute_trace(banking_system, initial_state, thread_config)
             end_time = time.time()
@@ -809,14 +818,19 @@ def chatbot():
             analytics_data = prep_multi_agent_log_load(trace_events=trace_events,
                                                         session_id=session_id,
                                                         user_id=user_id,
+                                                        trace_id = trace_id,
                                                         trace_duration=trace_duration)
+            
             # step1-  test simulate extremely sensitive content. First uncomment below to cause exception -->
             # result = res_dict["content"]  
-            _ = call_analytics_service("chat/log-multi-agent-trace", data=analytics_data)
+            _= stream_load(producer_events=producer_events, result_dict=analytics_data,
+                           user_msg = user_message)
+            _= call_analytics_service("chat/log-multi-agent-trace", data=analytics_data)
 
             analytics_call_duration = int((time.time() - analytics_call_start) * 1000)
         # handling extremely sensitive content error that caused llm provider to block the response
         except Exception as e:
+            print("EXCEPTION FLOW ********************************")
             end_time = time.time()
             trace_duration = int((end_time - trace_start_time) * 1000)
             
@@ -827,9 +841,10 @@ def chatbot():
 
             analytics_call_start = time.time()
              
-            result_dict = handle_content_safety_error(session_id=session_id, user_id=user_id, error = e, user_message=user_message)
+            result_dict = handle_content_safety_error(trace_id=trace_id, session_id=session_id, user_id=user_id, error = e, user_message=user_message)
+            _=stream_load(producer_events=producer_events, result_dict=result_dict, user_msg = user_message, failed_response=True)
             result = result_dict["message"].get("content")
-            _ = call_analytics_service("chat/log-content-safety-violation", data=result_dict)
+            _=call_analytics_service("chat/log-content-safety-violation", data=result_dict)
             analytics_call_duration = int((time.time() - analytics_call_start) * 1000)
         process_start = time.time()
 
