@@ -33,8 +33,8 @@ In this hands-on workshop, you will learn about:
 
 #### Streaming and RTI in Fabric
 
-- [Wire up streaming components]
-- [Test Real Time Alerting]
+- [Wire up EventHouse]
+- [Test Real Time Alerting by Simulating Severe Content]
 
 
 
