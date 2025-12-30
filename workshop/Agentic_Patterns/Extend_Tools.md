@@ -115,7 +115,7 @@ def find_largest_transaction_tool(
 
 ```
 
-Now, add this new tool to collection of accoount agent tool, by adding **find_largest_transaction_tool** to return list of "get_account_tools" function by modifying the return "list" as below:
+Now, add this new tool to collection of accoount agent tools, by adding **find_largest_transaction_tool** to return list of "get_account_tools" function by modifying the return "list" as below:
 
 ```python
     return [
