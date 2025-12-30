@@ -17,31 +17,31 @@ Now that you have confirmed that you are meeting the minimum requirements, let's
 ## Set up required resources (One time)
 
 ### 1. Set up your repo
-- Clone the repo: navigate to the repository on GitHub: https://aka.ms/AgenticAppFabric
+- Clone the repo: navigate to the workshop repository on GitHub: https://github.com/mehrsa/agentic-app-fabric-workshop
 - Click on the "Code" button. Copy the URL provided for cloning.
 - Open a terminal window on your machine and run below:
 
 ```bash
-git clone https://github.com/Azure-Samples/sql-agentic-app-with-fabric.git
-cd sql-agentic-app-with-fabric  # root folder of the repo
+git clone https://github.com/mehrsa/agentic-app-fabric-workshop
+cd agentic-app-fabric-workshop  # root folder of the repo
 ```
 Now that you cloned the content of repo to your local machine, you need to create a private repo in your Git accoutn and push the content of this public repo there. Why? because you will need to put some sensitive credentials in your repo when deploying Fabric artifacts, so it has to be private. Follow below steps:
 - Create a **private** repo in your Github account, with the same name. Since you will be adding sensitive credentials, **repo must be private**.
 - Go back to terminal (you should be in the root folder of the repo you cloned) and push the content to your private repo by running below:
 
 ```bash
- git push https://github.com/[replace with you git username]/[replace with your repo name].git
+git push https://github.com/[replace with you git username]/[replace with your repo name].git
 ```
 Refresh your private repo to confirm that it now has all the content.
 
 ### 2. Set up your Fabric account
 
-- If you do not already have access to a Fabric capacity, you can easily enable a Microsoft Fabric trial capacity for free which will give you free access for 60 days to all features needed for this demo: https://learn.microsoft.com/en-us/fabric/fundamentals/fabric-trial
+- Log in to your Fabric account
 
 - In Home tab (with Welcome to Fabric title), click on "New workspace" and proceed to create your workspace for this demo.
 
 ### 3. Automatic set up of all required Fabric resources and artifacts 
-To easily set up your Fabric workspace with all required artifacts for this demo, you need to link your Fabric workspace with your repo. 
+To easily set up your Fabric workspace with all required artifacts for this demo, you need to link your Fabric workspace with your repo (yes, the private one you just created). 
 
 You only need to do below steps one time.
 
