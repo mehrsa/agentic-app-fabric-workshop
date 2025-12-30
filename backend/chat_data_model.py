@@ -39,7 +39,7 @@ def handle_content_safety_error(error, trace_id:str, session_id: str, user_id: s
     # Extract content safety information from the error
     error_message = str(error)
     filter_category = "unknown"
-
+    
     content_filter_result_mock= {
         "hate": {
             "filtered": False,

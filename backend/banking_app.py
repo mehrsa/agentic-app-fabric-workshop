@@ -822,7 +822,13 @@ def chatbot():
                                                         trace_duration=trace_duration)
             
             # step1-  test simulate extremely sensitive content. First uncomment below to cause exception -->
-            # result = res_dict["content"]  
+            sensitive_list = ["violence", "self_harm", "hate",
+                              "sexual", "jailbreak"]
+            flag = False
+            if(user_message in sensitive_list):
+                flag = True
+                result = res_dict["content"]  
+                
             _= stream_load(producer_events=producer_events, result_dict=analytics_data,
                            user_msg = user_message)
             _= call_analytics_service("chat/log-multi-agent-trace", data=analytics_data)
@@ -830,14 +836,24 @@ def chatbot():
             analytics_call_duration = int((time.time() - analytics_call_start) * 1000)
         # handling extremely sensitive content error that caused llm provider to block the response
         except Exception as e:
-            print("EXCEPTION FLOW ********************************")
             end_time = time.time()
             trace_duration = int((end_time - trace_start_time) * 1000)
             
-            # step2- uncomment below 3 lines to test extremely sensitive content -->
-            # from unsafe_content_simulator import  simulate_safety_error 
-            # simulate_error = simulate_safety_error(jailbreak_detected=True, jailbreak_filtered=True)
-            # e=str(simulate_error.message)
+            from unsafe_content_simulator import  simulate_safety_error
+            if(flag): 
+                # in case of a simulated content safety error ... 
+                if(user_message == "violence"):
+                    simulate_error = simulate_safety_error(violence_severity="high", violence_filtered=True)
+                elif(user_message == "self_harm"):
+                    simulate_error = simulate_safety_error(self_harm_severity="high", self_harm_filtered=True)
+                elif(user_message == "hate"):
+                    simulate_error = simulate_safety_error(hate_severity="high", hate_filtered=True)
+                elif(user_message == "sexual"):
+                    simulate_error = simulate_safety_error(sexual_severity="high", sexual_filtered=True)
+                else:
+                    simulate_error = simulate_safety_error(jailbreak_detected=True, jailbreak_filtered=True)
+                e=str(simulate_error.message)
+                print(e)
 
             analytics_call_start = time.time()
              
