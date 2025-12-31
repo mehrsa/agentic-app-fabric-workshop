@@ -6,7 +6,7 @@ First, run the app, choose a user and ask this question: **what was my largest t
 
 Take note of the user and the trace_id number. We will repeat this question with the same user later. 
 
-Now let's follow the same pattern and add a new tool to one of the agents in the current banking application. We will show an example below, but feel free to define and add your own customized too to the agent of your choice. 
+Now let's follow the same pattern and add a new tool to one of the agents in the current banking application. We will show an example below, but feel free to define and add your own customized tool to the agent of your choice. 
 
 Add below code block to the file called **agent_tools.py**:
 
@@ -115,7 +115,7 @@ def find_largest_transaction_tool(
 
 ```
 
-Now, add this new tool to collection of accoount agent tool, by adding **find_largest_transaction_tool** to return list of "get_account_tools" function by modifying the return "list" as below:
+Now, add this new tool to collection of account agent tools, by adding **find_largest_transaction_tool** to the return **list** of "get_account_tools" function by modifying the return logic as below:
 
 ```python
     return [
@@ -129,4 +129,4 @@ Now, add this new tool to collection of accoount agent tool, by adding **find_la
 
 ```
 
-Save your changes and run the app to test. Ask the same question for the same user again. Having the trace_id for the two runs, comapre execution time (in agent_traces table) and total token usage for each trace (via tool_usage table).
+Save your changes and run the app to test. Ask the same question for the same user again. Having the **trace_id** for the two runs, you can now compare the execution time (in agent_traces table) and total token usage (via tool_usage table) between the two traces.
