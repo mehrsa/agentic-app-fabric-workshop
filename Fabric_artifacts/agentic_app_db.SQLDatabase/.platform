@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SQLDatabase",
+    "displayName": "agentic_app_db"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "35fad3ec-f95a-87e5-435e-e81d13cb5ae1"
+  }
+}
