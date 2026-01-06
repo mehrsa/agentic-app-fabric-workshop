@@ -25,11 +25,11 @@ In this hands-on workshop, you will learn about:
 #### Databases in Fabric
 - [Native Vector Search in Fabric SQL DB](workshop/SQL_Exercise/native-vector-search-workshop.md)
 
+
 #### Langgraph Agentic Patterns 
 - [Single Agent Example](workshop/Agentic_Patterns/banking_agent_workshop.ipynb)
-- [Multi Agent Example](workshop/Agentic_Patterns/multi_agent_banking_workshop.ipynb)
-- [Add New Tool For Agents in Banking App](workshop/Agentic_Patterns/Extend_Tools.md)
-- [Add a New Agent for Banking App](workshop/Agentic_Patterns/Add_Agent.md)
+- [Adding a New Tool For Agents in Banking App](workshop/Agentic_Patterns/Extend_Tools.md)
+- [Add a New Agent for to the Multi-Agent Banking App](workshop/Agentic_Patterns/Add_Agent.md)
 
 #### Streaming and RTI in Fabric
 
