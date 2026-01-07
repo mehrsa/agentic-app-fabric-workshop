@@ -11,11 +11,10 @@ Now let's follow the same pattern and add a new tool to one of the agents in the
 Add below code block to the file called **agent_tools.py**:
 
 ``` python 
-
 @tool
 def find_largest_transaction_tool(
     user_id: str,
-    time_period: str = "this_year",
+    time_period: str = "all time",
     category: str = None,
     transaction_type: str = None
 ) -> str:
@@ -23,7 +22,7 @@ def find_largest_transaction_tool(
     Finds the largest transaction(s) for the user.
     
     Args:
-        time_period: 'this_month', 'last_3_months', 'this_year' (default: 'this_year')
+        time_period: 'this_month', 'last_3_months', 'this_year', 'all_time' (default: 'all_time')
         category: Optional - filter by category (e.g., 'Dining', 'Shopping', 'Travel')
         transaction_type: Optional - filter by type (e.g., 'payment', 'transfer', 'deposit')
     
@@ -58,8 +57,11 @@ def find_largest_transaction_tool(
             start_date = end_date - relativedelta(months=3)
         elif time_period == "last_6_months":
             start_date = end_date - relativedelta(months=6)
-        else:  # this_year
+        elif time_period == "this_year":
             start_date = end_date.replace(month=1, day=1, hour=0, minute=0, second=0)
+        else:# all time (max 10 years back)
+            start_date = end_date - relativedelta(months=120)
+
         
         query = query.filter(Transaction.created_at.between(start_date, end_date))
         
@@ -112,6 +114,7 @@ def find_largest_transaction_tool(
             "status": "error",
             "message": str(e)
         })
+
 
 ```
 
