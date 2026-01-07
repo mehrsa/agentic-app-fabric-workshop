@@ -43,9 +43,9 @@ In this hands-on workshop, you will learn about:
 
 #### Creating Fabric Data Agent
 
-- [Fabric Data Agent](workshop/GenUI_Component/Exercise_GenUI_Component_MultiAgent.md)
-- [Semantic model checklist for Data Agent]()
-- [Data Agent Utilities notebook]()
+- [Fabric Data Agent](workshop/Data_Agent/data_agent_setup_instructions.pdf)
+- [Semantic model checklist for Data Agent](workshop/Data_Agent/semantic_model_dataagent_checklist.md)
+- [Data Agent Utilities notebook](workshop/Data_Agent/dataagent_utilities.ipynb)
 
 
 
