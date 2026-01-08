@@ -1,5 +1,5 @@
 # Welcome to the Agentic App in Fabric Workshop!
-
+![Watch the Demo: SQL Agentic App on Fabric](./assets/header2.png)
 ## Agenda
 
 In this hands-on workshop, you will learn about:
